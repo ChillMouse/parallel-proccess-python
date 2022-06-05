@@ -24,6 +24,11 @@ logger = logging.getLogger("pc") # ...
 pcs = set()
 relay = MediaRelay()
 
+class Connection():
+    channel = None
+    frame_count = int()
+    list_process = list()
+
 class VideoTransformTrack(MediaStreamTrack):
     """
     A video stream track that transforms frames from an another track.
@@ -31,13 +36,31 @@ class VideoTransformTrack(MediaStreamTrack):
 
     kind = "video"
 
+    global conn
+    conn = Connection()
+
+
     def __init__(self, track, transform):
         super().__init__()  # don't forget this!
         self.track = track
         self.transform = transform
 
     async def recv(self):
+        conn.frame_count += 1 # считаем кадры
         frame = await self.track.recv()
+
+        if conn.frame_count % 10 == 0 and conn.frame_count > 0: # каждый десятый кадр
+            any_payload = AnyPayload()
+            conn.list_process.append(any_payload)
+            any_payload.start()
+
+        if conn.list_process: # если не пустой список
+            for prc in conn.list_process: # перебрать элементы
+                if not prc.proc.is_alive(): # если есть готовый
+                    prc.result() # то прочитать его
+                    conn.list_process.remove(prc) # затем удалить
+                    if conn.channel:
+                        conn.channel.send(f'{prc.sum}, {prc.duration}')
 
         if self.transform == "cartoon":
             img = frame.to_ndarray(format="bgr24")
@@ -105,14 +128,16 @@ async def javascript(request):
 
 
 async def offer(request):
+    
+    # c_channel = Connection()
 
-    any_payload = AnyPayload()
+    # any_payload = AnyPayload()
 
-    output_c, input_c = Pipe()
+    # output_c, input_c = Pipe()
 
-    myProccess = Process(target=any_payload.sum_payload, args=(input_c,))
+    # myProccess = Process(target=any_payload.sum_payload, args=(input_c,))
 
-    myProccess.start()
+    # myProccess.start()
 
     params = await request.json()
     offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
@@ -135,14 +160,15 @@ async def offer(request):
 
     @pc.on("datachannel")
     def on_datachannel(channel):
+        conn.channel = channel
         @channel.on("message")
         def on_message(message):
             if isinstance(message, str) and message.startswith("ping"):
                 channel.send("pong" + message[4:])
-                if not output_c.closed and output_c.poll():
-                    print('Отправлено')
-                    channel.send(f'pong ответ: {output_c.recv()} ########')
-                    output_c.close()
+                # if not output_c.closed and output_c.poll():
+                #     print('Отправлено')
+                #     channel.send(f'pong ответ: {output_c.recv()} ########')
+                #     output_c.close()
 
     @pc.on("connectionstatechange")
     async def on_connectionstatechange():
