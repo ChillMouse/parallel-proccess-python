@@ -45,22 +45,27 @@ class VideoTransformTrack(MediaStreamTrack):
         self.track = track
         self.transform = transform
 
+    async def startProcs(self):
+            any_payload = AnyPayload()
+            await any_payload.start()
+            conn.list_process.append(any_payload)
+    
+    async def checkProcs(self):
+        if conn.list_process: # если не пустой список
+            for prc in conn.list_process: # перебрать элементы
+                if not prc.proc.is_alive(): # если есть готовый
+                    await prc.result() # то прочитать его
+                    conn.list_process.remove(prc) # затем удалить
+                    if conn.channel:
+                        conn.channel.send(f'{prc.sum}, {prc.duration}')
+
     async def recv(self):
         conn.frame_count += 1 # считаем кадры
         frame = await self.track.recv()
 
         if conn.frame_count % 10 == 0 and conn.frame_count > 0: # каждый десятый кадр
-            any_payload = AnyPayload()
-            conn.list_process.append(any_payload)
-            any_payload.start()
-
-        if conn.list_process: # если не пустой список
-            for prc in conn.list_process: # перебрать элементы
-                if not prc.proc.is_alive(): # если есть готовый
-                    prc.result() # то прочитать его
-                    conn.list_process.remove(prc) # затем удалить
-                    if conn.channel:
-                        conn.channel.send(f'{prc.sum}, {prc.duration}')
+            await self.startProcs()
+            await self.checkProcs()
 
         if self.transform == "cartoon":
             img = frame.to_ndarray(format="bgr24")
@@ -231,7 +236,7 @@ if __name__ == "__main__":
         "--host", default="127.0.0.1", help="Host for HTTP server (default: 127.0.0.1)"
     )
     parser.add_argument(
-        "--port", type=int, default=8080, help="Port for HTTP server (default: 8080)"
+        "--port", type=int, default=8081, help="Port for HTTP server (default: 8081)"
     )
     parser.add_argument("--record-to", help="Write received media to a file."),
     parser.add_argument("--verbose", "-v", action="count")

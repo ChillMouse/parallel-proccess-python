@@ -1,5 +1,6 @@
 import time
 from multiprocessing import Process, Pipe
+from asyncio import *
 
 class AnyPayload():
 
@@ -13,7 +14,7 @@ class AnyPayload():
 
     channel = None
 
-    def start(self):
+    async def start(self):
         self.out_c, self.in_c = Pipe()
 
         self.proc = Process(target=self.sum_payload, args=(self.in_c,))
@@ -24,7 +25,7 @@ class AnyPayload():
         time_start = time.time()
         self.sum = 0
 
-        for i in range(1_000_000):
+        for i in range(30_000_000):
             self.sum += i
 
         self.duration = time.time() - time_start
@@ -32,19 +33,19 @@ class AnyPayload():
         in_c.send((self.sum, self.duration))
         in_c.close()
     
-    def result(self):
+    async def result(self):
         success = False
         if not self.out_c.closed: # Если труба не закрыта
             if self.out_c.poll(): # Если пришёл ответ в трубу
                 self.sum, self.duration = self.out_c.recv() # получаем значения из трубы
                 print(self.sum, self.duration) # выводим на экран
                 self.out_c.close() # закрываем трубу
-                self.close() # удаляем этот объект
+                await self.close() # удаляем этот объект
                 success = True
         return success
                 
 
-    def close(self):
+    async def close(self):
         del self
         
 
